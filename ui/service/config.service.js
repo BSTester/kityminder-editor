@@ -18,7 +18,7 @@ angular.module('kityminderEditor')
 			zoom: [10, 20, 30, 50, 80, 100, 120, 150, 200],
 
             // 图片上传接口
-            imageUpload: 'server/imageUpload.php'
+            imageUpload: ''
 		};
 
 		this.set = function(key, value) {
