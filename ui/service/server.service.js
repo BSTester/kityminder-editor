@@ -14,12 +14,13 @@ angular.module('kityminderEditor')
         return {
             uploadImage: function(file) {
                 var url = config.get('imageUpload');
+                var headers = config.get('headers') || {};
                 var fd = new FormData();
                 fd.append('upload_file', file);
-
+                headers['Content-Type'] = undefined;
                 return $http.post(url, fd, {
                     transformRequest: angular.identity,
-                    headers: {'Content-Type': undefined}
+                    headers: headers
                 });
             }
         }
