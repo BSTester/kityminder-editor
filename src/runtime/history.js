@@ -110,7 +110,7 @@ define(function(require, exports, module) {
 
         var main = hotbox.state('main');
         main.button({
-            position: 'top',
+            position: 'bottom',
             label: '撤销',
             key: 'Ctrl + Z',
             enable: hasUndo,
@@ -118,7 +118,7 @@ define(function(require, exports, module) {
             next: 'idle'
         });
         main.button({
-            position: 'top',
+            position: 'bottom',
             label: '重做',
             key: 'Ctrl + Y',
             enable: hasRedo,
