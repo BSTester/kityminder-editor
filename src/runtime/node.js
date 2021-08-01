@@ -1,5 +1,134 @@
 define(function(require, exports, module) {
 
+    function xmindToJson(xmind) {
+        // 标签 map
+        var markerMap = {
+            'priority-1': ['priority', 1],
+            'priority-2': ['priority', 2],
+            'priority-3': ['priority', 3],
+            'priority-4': ['priority', 4],
+            'priority-5': ['priority', 5],
+            'priority-6': ['priority', 6],
+            'priority-7': ['priority', 7],
+            'priority-8': ['priority', 8],
+
+            'task-start': ['progress', 1],
+            'task-oct': ['progress', 2],
+            'task-quarter': ['progress', 3],
+            'task-3oct': ['progress', 4],
+            'task-half': ['progress', 5],
+            'task-5oct': ['progress', 6],
+            'task-3quar': ['progress', 7],
+            'task-7oct': ['progress', 8],
+            'task-done': ['progress', 9]
+        };
+
+        function processTopic(topic, obj) {
+
+            //处理文本
+            obj.data = {
+                text: topic.title
+            };
+
+            // 处理标签
+            if (topic.markers) {
+                var markers = topic.markers;
+                var type;
+                if (markers.length && markers.length > 0) {
+                    for (var i in markers) {
+                        type = markerMap[markers[i].markerId];
+                        if (type) obj.data[type[0]] = type[1];
+                    }
+                } else {
+                    type = markerMap[markers.markerId];
+                    if (type) obj.data[type[0]] = type[1];
+                }
+            }
+
+            // 处理超链接
+            if (topic.href) {
+                obj.data.hyperlink = topic.href;
+            }
+            // 处理标签
+            if (topic.labels) {
+                obj.data.resource = topic.labels;
+            }
+            // 处理备注
+            if (topic.notes) {
+                obj.data.note = topic.notes.plain.content;
+            }
+            // 处理图片
+            if (topic.image) {
+                obj.data.image = topic.image.src;
+            }
+            //处理子节点
+            var subTopics = topic.children && topic.children.attached;
+            if (subTopics) {
+                var tmp = subTopics;
+                if (tmp.length && tmp.length > 0) { //多个子节点
+                    obj.children = [];
+
+                    for (var i in tmp) {
+                        obj.children.push({});
+                        processTopic(tmp[i], obj.children[i]);
+                    }
+
+                } else { //一个子节点
+                    obj.children = [{}];
+                    processTopic(tmp, obj.children[0]);
+                }
+            }
+        }
+
+        function xml2km(xml) {
+            var result = {};
+            var sheet = JSON.parse(xml);
+            var topic = Array.isArray(sheet) ? sheet[0].rootTopic : sheet.rootTopic;
+            processTopic(topic, result);
+            return result;
+        }
+
+        function getEntries(file) {
+            var zipReader = new zip.ZipReader(new zip.BlobReader(file));
+            return zipReader.getEntries();
+        }
+
+        function readDocument(entries) {
+            return new Promise(function(resolve, reject) {
+                var entry, json;
+
+                // 查找文档入口
+                while ((entry = entries.pop())) {
+
+                    if (entry.filename.split('/').pop() == 'content.json') break;
+
+                    entry = null;
+
+                }
+
+                // 找到了读取数据
+                if (entry) {
+
+                    entry.getData(new zip.TextWriter()).then(function(text) {
+                        try {
+                            json = xml2km(text);
+                            resolve(json);
+                        } catch (e) {
+                            reject(e);
+                        }
+                    });
+
+                } 
+
+                // 找不到返回失败
+                else {
+                    reject(new Error('Content document missing'));
+                }
+            });
+        }
+        return getEntries(xmind).then(readDocument);
+    }
+
     function NodeRuntime() {
         var runtime = this;
         var minder = this.minder;
@@ -116,7 +245,7 @@ define(function(require, exports, module) {
         });
         
         var importData = hotbox.state('importData');
-        ['json', 'text', 'markdown'].forEach(function(t, i) {
+        ['json', 'text', 'markdown', 'xmind'].forEach(function(t, i) {
             importData.button({
                 position: 'ring',
                 label: t,
@@ -129,25 +258,41 @@ define(function(require, exports, module) {
                         accept = 'text/plain';
                     }else if (t === 'json') {
                         accept = 'application/json';
+                    }else if (t === 'xmind') {
+                        accept = 'application/vnd.xmind.workbook';
                     }
                     var save_input = document.createElementNS("http://www.w3.org/1999/xhtml", "input")
                     save_input.type = "file";
                     save_input.accept = accept;
                     save_input.onchange = function(e) {
-                        var file = e.target.files[0];
-                        var reader = new FileReader();
-                        reader.onload = function(evt) {
-                            try {
-                                if(file.name.indexOf('.json')>0 || file.name.indexOf('.txt')>0 || file.name.indexOf('.md')>0){
+                        try {
+                            var file = e.target.files[0];
+                            var reader = new FileReader();
+                            if(file.name.indexOf('.json')>0 || file.name.indexOf('.txt')>0 || file.name.indexOf('.md')>0){
+                                reader.onload = function(evt) {
                                     minder.importData(t, evt.target.result);
-                                }else{
-                                    alert("Import file's type only support 'json', 'text' and 'markdown'.");
                                 };
-                            } catch (e) {
-                                alert(e);
-                            }
-                        };
-                        reader.readAsText(file);
+                                reader.readAsText(file);
+                            }else if (file.name.indexOf('.xmind')>0){
+                                reader.onload = function(evt) {
+                                    var arr = evt.target.result.split(',')
+                                    var data = window.atob(arr[1])
+                                    var mime = arr[0].match(/:(.*?);/)[1]
+                                    var ia = new Uint8Array(data.length)
+                                    for (var i = 0; i < data.length; i++) {
+                                        ia[i] = data.charCodeAt(i)
+                                    }
+                                    xmindToJson(new Blob([ia], {type: mime})).then(function(data){
+                                        minder.importJson(data);
+                                    });
+                                };
+                                reader.readAsDataURL(file);
+                            }else{
+                                alert("Import file's type only support 'json', 'text', 'markdown' and 'xmind'.");
+                            };
+                        } catch (e) {
+                            alert(e);
+                        }
                     }
                     save_input.click();
                 }

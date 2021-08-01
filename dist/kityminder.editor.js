@@ -1,6 +1,6 @@
 /*!
  * ====================================================
- * kityminder-editor - v1.0.67 - 2021-07-29
+ * kityminder-editor - v1.0.67 - 2021-08-01
  * https://github.com/fex-team/kityminder-editor
  * GitHub: https://github.com/fex-team/kityminder-editor 
  * Copyright (c) 2021 ; Licensed 
@@ -1416,6 +1416,116 @@ _p[14] = {
 //src/runtime/node.js
 _p[15] = {
     value: function(require, exports, module) {
+        function xmindToJson(xmind) {
+            // 标签 map
+            var markerMap = {
+                "priority-1": [ "priority", 1 ],
+                "priority-2": [ "priority", 2 ],
+                "priority-3": [ "priority", 3 ],
+                "priority-4": [ "priority", 4 ],
+                "priority-5": [ "priority", 5 ],
+                "priority-6": [ "priority", 6 ],
+                "priority-7": [ "priority", 7 ],
+                "priority-8": [ "priority", 8 ],
+                "task-start": [ "progress", 1 ],
+                "task-oct": [ "progress", 2 ],
+                "task-quarter": [ "progress", 3 ],
+                "task-3oct": [ "progress", 4 ],
+                "task-half": [ "progress", 5 ],
+                "task-5oct": [ "progress", 6 ],
+                "task-3quar": [ "progress", 7 ],
+                "task-7oct": [ "progress", 8 ],
+                "task-done": [ "progress", 9 ]
+            };
+            function processTopic(topic, obj) {
+                //处理文本
+                obj.data = {
+                    text: topic.title
+                };
+                // 处理标签
+                if (topic.markers) {
+                    var markers = topic.markers;
+                    var type;
+                    if (markers.length && markers.length > 0) {
+                        for (var i in markers) {
+                            type = markerMap[markers[i].markerId];
+                            if (type) obj.data[type[0]] = type[1];
+                        }
+                    } else {
+                        type = markerMap[markers.markerId];
+                        if (type) obj.data[type[0]] = type[1];
+                    }
+                }
+                // 处理超链接
+                if (topic.href) {
+                    obj.data.hyperlink = topic.href;
+                }
+                // 处理标签
+                if (topic.labels) {
+                    obj.data.resource = topic.labels;
+                }
+                // 处理备注
+                if (topic.notes) {
+                    obj.data.note = topic.notes.plain.content;
+                }
+                // 处理图片
+                if (topic.image) {
+                    obj.data.image = topic.image.src;
+                }
+                //处理子节点
+                var subTopics = topic.children && topic.children.attached;
+                if (subTopics) {
+                    var tmp = subTopics;
+                    if (tmp.length && tmp.length > 0) {
+                        //多个子节点
+                        obj.children = [];
+                        for (var i in tmp) {
+                            obj.children.push({});
+                            processTopic(tmp[i], obj.children[i]);
+                        }
+                    } else {
+                        //一个子节点
+                        obj.children = [ {} ];
+                        processTopic(tmp, obj.children[0]);
+                    }
+                }
+            }
+            function xml2km(xml) {
+                var result = {};
+                var sheet = JSON.parse(xml);
+                var topic = Array.isArray(sheet) ? sheet[0].rootTopic : sheet.rootTopic;
+                processTopic(topic, result);
+                return result;
+            }
+            function getEntries(file) {
+                var zipReader = new zip.ZipReader(new zip.BlobReader(file));
+                return zipReader.getEntries();
+            }
+            function readDocument(entries) {
+                return new Promise(function(resolve, reject) {
+                    var entry, json;
+                    // 查找文档入口
+                    while (entry = entries.pop()) {
+                        if (entry.filename.split("/").pop() == "content.json") break;
+                        entry = null;
+                    }
+                    // 找到了读取数据
+                    if (entry) {
+                        entry.getData(new zip.TextWriter()).then(function(text) {
+                            try {
+                                json = xml2km(text);
+                                resolve(json);
+                            } catch (e) {
+                                reject(e);
+                            }
+                        });
+                    } else {
+                        reject(new Error("Content document missing"));
+                    }
+                });
+            }
+            return getEntries(xmind).then(readDocument);
+        }
         function NodeRuntime() {
             var runtime = this;
             var minder = this.minder;
@@ -1517,7 +1627,7 @@ _p[15] = {
                 next: "back"
             });
             var importData = hotbox.state("importData");
-            [ "json", "text", "markdown" ].forEach(function(t, i) {
+            [ "json", "text", "markdown", "xmind" ].forEach(function(t, i) {
                 importData.button({
                     position: "ring",
                     label: t,
@@ -1530,25 +1640,43 @@ _p[15] = {
                             accept = "text/plain";
                         } else if (t === "json") {
                             accept = "application/json";
+                        } else if (t === "xmind") {
+                            accept = "application/vnd.xmind.workbook";
                         }
                         var save_input = document.createElementNS("http://www.w3.org/1999/xhtml", "input");
                         save_input.type = "file";
                         save_input.accept = accept;
                         save_input.onchange = function(e) {
-                            var file = e.target.files[0];
-                            var reader = new FileReader();
-                            reader.onload = function(evt) {
-                                try {
-                                    if (file.name.indexOf(".json") > 0 || file.name.indexOf(".txt") > 0 || file.name.indexOf(".md") > 0) {
+                            try {
+                                var file = e.target.files[0];
+                                var reader = new FileReader();
+                                if (file.name.indexOf(".json") > 0 || file.name.indexOf(".txt") > 0 || file.name.indexOf(".md") > 0) {
+                                    reader.onload = function(evt) {
                                         minder.importData(t, evt.target.result);
-                                    } else {
-                                        alert("Import file's type only support 'json', 'text' and 'markdown'.");
-                                    }
-                                } catch (e) {
-                                    alert(e);
+                                    };
+                                    reader.readAsText(file);
+                                } else if (file.name.indexOf(".xmind") > 0) {
+                                    reader.onload = function(evt) {
+                                        var arr = evt.target.result.split(",");
+                                        var data = window.atob(arr[1]);
+                                        var mime = arr[0].match(/:(.*?);/)[1];
+                                        var ia = new Uint8Array(data.length);
+                                        for (var i = 0; i < data.length; i++) {
+                                            ia[i] = data.charCodeAt(i);
+                                        }
+                                        xmindToJson(new Blob([ ia ], {
+                                            type: mime
+                                        })).then(function(data) {
+                                            minder.importJson(data);
+                                        });
+                                    };
+                                    reader.readAsDataURL(file);
+                                } else {
+                                    alert("Import file's type only support 'json', 'text', 'markdown' and 'xmind'.");
                                 }
-                            };
-                            reader.readAsText(file);
+                            } catch (e) {
+                                alert(e);
+                            }
                         };
                         save_input.click();
                     }
@@ -2228,12 +2356,9 @@ angular.module('kityminderEditor').run(['$templateCache', function($templateCach
 
 
   $templateCache.put('ui/directive/navigator/navigator.html',
-    "<div class=\"nav-bar\"><div class=\"nav-btn zoom-in\" ng-click=\"minder.execCommand('zoomIn')\" title=\"{{ 'zoom-in' | lang : 'ui' }}\" ng-class=\"{ 'active' : getZoomRadio(zoom) == 0 }\"><div class=\"icon\"></div></div><div class=\"zoom-pan\"><div class=\"origin\" ng-style=\"{'transform': 'translate(0, ' + getHeight(100) + 'px)'}\" ng-click=\"minder.execCommand('zoom', 100);\"></div><div class=\"indicator\" ng-style=\"{\r" +
-    "\n" +
-    "             'transform': 'translate(0, ' + getHeight(zoom) + 'px)',\r" +
-    "\n" +
-    "             'transition': 'transform 200ms'\r" +
-    "\n" +
+    "<div class=\"nav-bar\"><div class=\"nav-btn zoom-in\" ng-click=\"minder.execCommand('zoomIn')\" title=\"{{ 'zoom-in' | lang : 'ui' }}\" ng-class=\"{ 'active' : getZoomRadio(zoom) == 0 }\"><div class=\"icon\"></div></div><div class=\"zoom-pan\"><div class=\"origin\" ng-style=\"{'transform': 'translate(0, ' + getHeight(100) + 'px)'}\" ng-click=\"minder.execCommand('zoom', 100);\"></div><div class=\"indicator\" ng-style=\"{\n" +
+    "             'transform': 'translate(0, ' + getHeight(zoom) + 'px)',\n" +
+    "             'transition': 'transform 200ms'\n" +
     "             }\"></div></div><div class=\"nav-btn zoom-out\" ng-click=\"minder.execCommand('zoomOut')\" title=\"{{ 'zoom-out' | lang : 'ui' }}\" ng-class=\"{ 'active' : getZoomRadio(zoom) == 1 }\"><div class=\"icon\"></div></div><div class=\"nav-btn hand\" ng-click=\"minder.execCommand('hand')\" title=\"{{ 'hand' | lang : 'ui' }}\" ng-class=\"{ 'active' : minder.queryCommandState('hand') == 1 }\"><div class=\"icon\"></div></div><div class=\"nav-btn camera\" ng-click=\"minder.execCommand('camera', minder.getRoot(), 600);\" title=\"{{ 'camera' | lang : 'ui' }}\"><div class=\"icon\"></div></div><div class=\"nav-btn nav-trigger\" ng-class=\"{'active' : isNavOpen}\" ng-click=\"toggleNavOpen()\" title=\"{{ 'navigator' | lang : 'ui' }}\"><div class=\"icon\"></div></div></div><div class=\"nav-previewer\" ng-show=\"isNavOpen\"></div>"
   );
 
@@ -2244,20 +2369,13 @@ angular.module('kityminderEditor').run(['$templateCache', function($templateCach
 
 
   $templateCache.put('ui/directive/noteEditor/noteEditor.html',
-    "<div class=\"panel panel-default\" ng-init=\"noteEditorOpen = false\" ng-show=\"noteEditorOpen\"><div class=\"panel-heading\"><h3 class=\"panel-title\">备注</h3><span>（<a class=\"help\" href=\"https://www.zybuluo.com/techird/note/46064\" target=\"_blank\">支持 GFM 语法书写</a>）</span> <i class=\"close-note-editor glyphicon glyphicon-remove\" ng-click=\"closeNoteEditor()\"></i></div><div class=\"panel-body\"><div ng-show=\"noteEnabled\" ui-codemirror=\"{ onLoad: codemirrorLoaded }\" ng-model=\"noteContent\" ui-codemirror-opts=\"{\r" +
-    "\n" +
-    "                gfm: true,\r" +
-    "\n" +
-    "                breaks: true,\r" +
-    "\n" +
-    "                lineWrapping : true,\r" +
-    "\n" +
-    "                mode: 'gfm',\r" +
-    "\n" +
-    "                dragDrop: false,\r" +
-    "\n" +
-    "                lineNumbers:true\r" +
-    "\n" +
+    "<div class=\"panel panel-default\" ng-init=\"noteEditorOpen = false\" ng-show=\"noteEditorOpen\"><div class=\"panel-heading\"><h3 class=\"panel-title\">备注</h3><span>（<a class=\"help\" href=\"https://www.zybuluo.com/techird/note/46064\" target=\"_blank\">支持 GFM 语法书写</a>）</span> <i class=\"close-note-editor glyphicon glyphicon-remove\" ng-click=\"closeNoteEditor()\"></i></div><div class=\"panel-body\"><div ng-show=\"noteEnabled\" ui-codemirror=\"{ onLoad: codemirrorLoaded }\" ng-model=\"noteContent\" ui-codemirror-opts=\"{\n" +
+    "                gfm: true,\n" +
+    "                breaks: true,\n" +
+    "                lineWrapping : true,\n" +
+    "                mode: 'gfm',\n" +
+    "                dragDrop: false,\n" +
+    "                lineNumbers:true\n" +
     "             }\"></div><p ng-show=\"!noteEnabled\" class=\"km-note-tips\">请选择节点编辑备注</p></div></div>"
   );
 
@@ -2333,8 +2451,7 @@ angular.module('kityminderEditor').run(['$templateCache', function($templateCach
 
 
   $templateCache.put('ui/dialog/imExportNode/imExportNode.tpl.html',
-    "<div class=\"modal-header\"><h3 class=\"modal-title\">{{ title }}</h3></div><div class=\"modal-body\"><textarea type=\"text\" class=\"form-control single-input\" rows=\"8\" ng-keydown=\"shortCut($event);\" ng-model=\"value\" ng-readonly=\"type === 'export'\">\r" +
-    "\n" +
+    "<div class=\"modal-header\"><h3 class=\"modal-title\">{{ title }}</h3></div><div class=\"modal-body\"><textarea type=\"text\" class=\"form-control single-input\" rows=\"8\" ng-keydown=\"shortCut($event);\" ng-model=\"value\" ng-readonly=\"type === 'export'\">\n" +
     "    </textarea></div><div class=\"modal-footer\"><button class=\"btn btn-primary\" ng-click=\"ok()\" ng-disabled=\"type === 'import' && value == ''\">OK</button> <button class=\"btn btn-warning\" ng-click=\"cancel()\">Cancel</button></div>"
   );
 
