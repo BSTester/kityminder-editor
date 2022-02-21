@@ -1,9 +1,9 @@
 /*!
  * ====================================================
- * kityminder-editor - v1.0.67 - 2021-08-01
+ * kityminder-editor - v1.0.67 - 2022-02-21
  * https://github.com/fex-team/kityminder-editor
  * GitHub: https://github.com/fex-team/kityminder-editor 
- * Copyright (c) 2021 ; Licensed 
+ * Copyright (c) 2022 ; Licensed 
  * ====================================================
  */
 
@@ -1440,7 +1440,10 @@ _p[15] = {
             function processTopic(topic, obj) {
                 //处理文本
                 obj.data = {
-                    text: topic.title
+                    text: topic.title,
+                    id: (+new Date() * 1e6 + Math.floor(Math.random() * 1e6)).toString(36),
+                    created: +new Date(),
+                    updated: +new Date()
                 };
                 // 处理标签
                 if (topic.markers) {
