@@ -27,7 +27,10 @@ define(function(require, exports, module) {
 
             //处理文本
             obj.data = {
-                text: topic.title
+                text: topic.title,
+                id: (+new Date() * 1e6 + Math.floor(Math.random() * 1e6)).toString(36),
+                created: +new Date(),
+                updated: +new Date()
             };
 
             // 处理标签
