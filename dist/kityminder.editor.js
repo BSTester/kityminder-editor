@@ -1,6 +1,6 @@
 /*!
  * ====================================================
- * kityminder-editor - v1.0.67 - 2022-02-21
+ * kityminder-editor - v1.0.67 - 2022-02-22
  * https://github.com/fex-team/kityminder-editor
  * GitHub: https://github.com/fex-team/kityminder-editor 
  * Copyright (c) 2022 ; Licensed 
@@ -360,6 +360,7 @@ _p[6] = {
                                     // 由于粘贴逻辑中为了排除子节点重新排序导致逆序，因此复制的时候倒过来
                                     for (var i = nodes.length - 1; i >= 0; i--) {
                                         _node = minder.createNode(null, node);
+                                        nodes[i]["data"]["id"] = (+new Date() * 1e6 + Math.floor(Math.random() * 1e6)).toString(36);
                                         minder.importNode(_node, nodes[i]);
                                         _selectedNodes.push(_node);
                                         node.appendChild(_node);
